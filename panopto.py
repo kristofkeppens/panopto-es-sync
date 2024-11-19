@@ -6,7 +6,7 @@ import os
 
 from elasticsearch import Elasticsearch, helpers
 from common.panopto_oauth2 import PanoptoOAuth2  # Import the OAuth2 module
-from prometheus_client import start_http_server, Summary
+#from prometheus_client import start_http_server, Summary
 
 
 # Constants for Elasticsearch configuration
@@ -22,7 +22,7 @@ oauth2: PanoptoOAuth2
 server: str
 
 # Create a metric to track time spent and requests made.
-REQUEST_TIME = Summary('request_processing_seconds', 'Time spent processing request')
+#REQUEST_TIME = Summary('request_processing_seconds', 'Time spent processing request')
 
 def save_current_page(page_number: int):
     """
@@ -53,7 +53,7 @@ def remove_current_page_file():
     if os.path.exists(TEMP_PAGE_FILE):
         os.remove(TEMP_PAGE_FILE)
 
-@REQUEST_TIME.time()
+#@REQUEST_TIME.time()
 def get_all_sessions(requests_session, server:str, dry_run:bool=False, debug:bool=False):
     """
     Retrieve all sessions from the Panopto API and index them to Elasticsearch.
@@ -82,7 +82,7 @@ def get_all_sessions(requests_session, server:str, dry_run:bool=False, debug:boo
         })
         
         # When 401 unauthenticated is returned reauthenticate and return to start of loop
-        if response.status_code == 401:
+        if inspect_response_is_unauthorized(response):
             authorization(requests_session, oauth2)
             continue
         
@@ -121,8 +121,8 @@ def get_recording_info(session_id: str, server:str, requests_session, debug:bool
     recording_url = f"https://{server}/Panopto/api/v1/scheduledRecordings/{session_id}"
     response = requests_session.get(recording_url)
 
-    # When 401 unauthenticated is returned reauthenticate and return to start of loop
-    if response.status_code == 401:
+    # When 401 unauthenticated is returned reauthenticate and retry request
+    if inspect_response_is_unauthorized(response):
         authorization(requests_session, oauth2)
         response = requests_session.get(recording_url)
             
@@ -177,6 +177,23 @@ def authorization(requests_session):
     access_token = oauth2.get_access_token_authorization_code_grant()
     requests_session.headers.update({'Authorization': 'Bearer ' + access_token})
 
+def inspect_response_is_unauthorized(response):
+    '''
+    Inspect the response of a request's call, and return True if the response was Unauthorized.
+    An exception is thrown at other error responses.
+    Reference: https://stackoverflow.com/a/24519419
+    '''
+    if response.status_code // 100 == 2:
+        # Success on 2xx response.
+        return False
+
+    if response.status_code == requests.codes.unauthorized:
+        print('Unauthorized. Access token is invalid.')
+        return True
+
+    # Throw unhandled cases.
+    # response.raise_for_status()
+
 @click.command()
 @click.option('--server', required=True, help='Panopto Server URL (without https://)')
 @click.option('--client_id', required=True, help='Panopto API Client ID')
@@ -198,7 +215,9 @@ def main(server, client_id, client_secret, es_host, debug, dry_run):
     global oauth2
     global ELASTICSEARCH_HOST
 
-    ELASTICSEARCH_HOST = es_host
+    if es_host is not None:
+        ELASTICSEARCH_HOST = es_host
+        
     print(ELASTICSEARCH_HOST)
 
     requests_session = requests.Session()
@@ -208,9 +227,8 @@ def main(server, client_id, client_secret, es_host, debug, dry_run):
     oauth2 = PanoptoOAuth2(server, client_id, client_secret, ssl_verify=True)
 
     authorization(requests_session)
-
-    sessions = get_all_sessions(requests_session, server, dry_run, debug)
+    get_all_sessions(requests_session, server, dry_run, debug)
 
 if __name__ == "__main__":
-    start_http_server(8000)
+    #start_http_server(8000)
     main(auto_envvar_prefix='PANOPTO')
