@@ -121,6 +121,17 @@ class PanoptoOAuth2():
         print('OAuth2 flow provided the token below. Cache it to {0}'.format(self.cache_file))
         pprint.pprint(token, indent = 4)
 
+    def __read_token_from_cache(self):
+        '''
+        Private method of the class
+        Reads entire token object from cache and returns it
+        '''
+
+        with open(self.cache_file, 'r') as fw:
+            token = pickle.load(fw)
+
+        return token
+
     def get_access_token_resource_owner_grant(self, username, password):
         '''
         Get OAuth2 access token by Resource Owner Grant (User Based Server Application).
@@ -139,6 +150,11 @@ class PanoptoOAuth2():
         print('OAuth2 flow provided the token below.')
         pprint.pprint(session.token, indent = 4)
         return session.token['access_token']
+    
+    def check_token_expiration_date(self):
+
+        token = self.__read_token_from_cache()
+        pprint.pprint(token, indent = 4)
 
 
 class RedirectTCPServer(ThreadingTCPServer):
