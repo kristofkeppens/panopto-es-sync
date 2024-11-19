@@ -1,0 +1,7 @@
+click==8.0.3
+requests==2.26.0
+elasticsearch==7.14.0
+prometheus-client
+oauthlib
+requests_oauthlib
+
